@@ -54,13 +54,17 @@ openlog($conf['syslog']['prefix'], LOG_CONS | LOG_PID, LOG_DAEMON);
 
 if ($options['consumer-key']) {
 	$return = $updater->auth('ovh.com');
-	echo "1. For validate your consumer_key, connect to : ".$return['response']->validationUrl."\n";
-	echo "2. Insert your consumer_key on config file : ".$return['response']->consumerKey."\n";
 	
+	if ($return['http_code'] == 200) {
+	    echo "1. For validate your consumer_key, connect to : ".$return['response']->validationUrl."\n";
+        echo "2. Insert your consumer_key on config file : ".$return['response']->consumerKey."\n";
+	} else {
+        echo "An error with your ovh app, please check your config file !\n";
+	}
 	exit("\n");
 }
 
-if (empty(trim($conf['api']['consumer_key']))) {
+if (empty($conf['api']['consumer_key'])) {
     exit("Before use this program you must obtain a consumer key, use --consumer-key \n");
 }
 
