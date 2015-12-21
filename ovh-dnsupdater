@@ -8,6 +8,7 @@ $options = array(
 	'h'         => FALSE,
 	'help'      => FALSE,
 	'dry-run'   => FALSE,
+	'consumer-key'   => FALSE,
 	'conf-file' => '/etc/ovh-dnsupdater',
 );
 foreach ($argv as $arg) {
@@ -35,7 +36,8 @@ Options:
 	Show this help message.
   --hard       
 	Force downloading the list of already setup domains using the API.
-
+  --consumer-key      
+	Force downloading the list of already setup domains using the API.
 
 EOD;
 	exit(0);
@@ -44,14 +46,23 @@ EOD;
 // Load the configuration file
 $conf = parse_ini_file($options['conf-file'], true);
 $conf['paths']['setup_domains'] = $conf['paths']['data'] . '/domains';
-ini_set('soap.wsdl_cache_dir', $conf['paths']['data']);
 
-$updater = new DnsUpdater($conf['soapi']['url'], $conf['soapi']['nic'], $conf['soapi']['password'], 
-	$conf['server']['hostname'], $conf['server']['ip'], $conf['backup_dns']['hostname'], 
-	$conf['backup_dns']['ip']);
+$updater = new DnsUpdater($conf['api']['url'], $conf['api']['acces_key'], $conf['api']['acces_secret'], $conf['api']['consumer_key'],
+	$conf['server']['type'], $conf['server']['hostname'], $conf['server']['ip']);
 
 openlog($conf['syslog']['prefix'], LOG_CONS | LOG_PID, LOG_DAEMON);
 
+if ($options['consumer-key']) {
+	$return = $updater->auth('ovh.com');
+	echo "1. For validate your consumer_key, connect to : ".$return['response']->validationUrl."\n";
+	echo "2. Insert your consumer_key on config file : ".$return['response']->consumerKey."\n";
+	
+	exit("\n");
+}
+
+if (empty(trim($conf['api']['consumer_key']))) {
+    exit("Before use this program you must obtain a consumer key, use --consumer-key \n");
+}
 
 if ($options['dry-run']) {
 	syslog(LOG_NOTICE, "Dry-run specified, the following actions will NOT be really processed.");
@@ -79,11 +90,13 @@ while (($file = readdir($fh)) !== FALSE) {
 	if ($file == '.' || $file == '..') {
 		continue;
 	}
+
 	$pos = strrpos($file, $conf['paths']['zone_suffix']);
 	if ($pos !== FALSE) {
 		$new[] = trim(substr($file, 0, $pos));
 	}
 }
+
 
 // Compute the differences and add/remove domains as needed
 $removed = array_diff($old, $new);
@@ -96,20 +109,22 @@ foreach($removed as $domain) {
 			$updater->removeDomain($domain);
 		}
 		syslog(LOG_NOTICE, 'Removed domain ' . $domain . ' from the secondary DNS server');
-	} catch(SoapFault $fault) {
-		syslog(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server: ' . $fault->getMessage());
+	} catch(Exception $e) {
+		syslog(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server: ' . $e->getMessage());
 	}
 }
 foreach($added as $domain) {
 	$domain = trim($domain);
+
 	try {
 		if (!$options['dry-run']) {
 			$updater->addDomain($domain);
 		}
-		syslog(LOG_NOTICE, 'Added domain ' . $domain . ' to the secondary DNS server');
-	} catch(SoapFault $fault) {
-		syslog(LOG_NOTICE, 'Failed to add domain ' . $domain . ' to the secondary DNS server: ' . $fault->getMessage());
+		syslog(LOG_NOTICE, 'Added domain ' . $domain . ' from the secondary DNS server');
+	} catch(Exception $e) {
+		syslog(LOG_NOTICE, 'Failed to add domain ' . $domain . ' from the secondary DNS server: ' . $e->getMessage());
 	}
+
 }
 
 // Save the current list of configured domains
@@ -117,75 +132,187 @@ file_put_contents($conf['paths']['setup_domains'], implode("\n", $new) . "\n");
 
 class DnsUpdater {
 	private $_url;
-	private $_user;
-	private $_pass;
-
+	private $_acces_key;
+	private $_acces_secret;
+    private $_consummer_key = false;
+	
+	private $_type;
 	private $_host;
 	private $_ip;
 	private $_dnshost;
 	private $_dnsip;
 
-	private $_soap = false;
-	private $_session = false;
+	private $_ovhapi = false;
 
-	public function __construct($url, $user, $pass, $host, $ip, $dnshost, $dnsip) {
+	public function __construct($url, $acces_key, $acces_secret, $consummer_key, $type, $host, $ip) {
 		$this->_url  = $url;
-		$this->_user = $user;
-		$this->_pass = $pass;
-
+		$this->_acces_key = $acces_key;
+		$this->_acces_secret = $acces_secret;
+		if (!empty($consummer_key)) {
+            $this->_consummer_key = $consummer_key;
+        }
+        
+        $this->_type = $type;
+        if (strtolower($type) != 'vps') {
+            $this->_type = 'dedicated/server';  
+        }
 		$this->_host = $host;
 		$this->_ip   = $ip;
-		$this->_dnshost = $dnshost;
-		$this->_dnsip = $dnsip;
+		
+        $this->_ovhapi = new OvhApi($this->_url, $this->_acces_key, $this->_acces_secret, $this->_consummer_key);
 	}
 
-	public function __destruct() {
-		$this->logout();
-	}
+    public function auth($redirect) {
+        $json = array(
+            "accessRules" => array(
+                array(
+                    "method" => "GET",
+                    "path" => "/dedicated/server/*/secondaryDnsDomains",
+                ),
+                array(
+                    "method" => "POST",
+                    "path" => "/dedicated/server/*/secondaryDnsDomains",
+                ),
+                array(
+                    "method" => "DELETE",
+                    "path" => "/dedicated/server/*/secondaryDnsDomains/*",
+                ),
+                array(
+                    "method" => "GET",
+                    "path" => "/vps/*/secondaryDnsDomains",
+                ),
+                array(
+                    "method" => "POST",
+                    "path" => "/vps/*/secondaryDnsDomains",
+                ),
+                array(
+                    "method" => "DELETE",
+                    "path" => "/vps/*/secondaryDnsDomains/*",
+                ),
+            ),
+            "redirection" => $redirect
+        );
 
-	protected function login() {
-		if ($this->_soap && $this->_session) {
-			return;
-		}
-		try {
-			$this->_soap = new SoapClient($this->_url);
-			$this->_session = $this->_soap->login($this->_user, $this->_pass, "en", false);
-		} catch (Exception $e) {
-			syslog(LOG_ERR, "Unable to login: " . $e->getMessage());
-			exit(1);
-		}
-	}
-
-	protected function logout() {
-		if (!($this->_soap && $this->_session)) {
-			return;
-		}
-
-		$this->_soap->logout($this->_session);
-	}
+        return $this->_ovhapi->post('/auth/credential', $json);
+    }
 
 	public function addDomain($domain) {
-		$this->login();
-		$this->_soap->dedicatedSecondaryDNSAdd($this->_session, $this->_host, $this->_ip, $domain, $this->_dnshost, $this->_dnsip);
+    	
+		$params = array('domain' => $domain, 'ip' => $this->_ip);
+		$api_return = $this->_ovhapi->post('/'.$this->_type.'/'.$this->_host.'/secondaryDnsDomains', $params);
+		if ($api_return['http_code'] == 200) {
+            return true;
+        } else {
+           throw new Exception($api_return['response']->message);
+        }
+		
 	}
 
 	public function removeDomain($domain) {
-		$this->login();
-		$this->_soap->dedicatedSecondaryDNSDel($this->_session, $this->_host, $this->_ip, $domain, $this->_dnshost, $this->_dnsip);
+ 
+		$api_return = $this->_ovhapi->delete('/'.$this->_type.'/'.$this->_host.'/secondaryDnsDomains/'.$domain);
+		if ($api_return['http_code'] == 200) {
+            return true;
+        } else {
+           throw new Exception($api_return['response']->message);
+        }
+         
 	}
 
 	public function getDomains() {
-		$this->login();
-
-		$domains = array();
-		$result = $this->_soap->dedicatedSecondaryDNSGetAll($this->_session, $this->_host);
-		foreach ($result as $ip) {
-			foreach ($ip->secondary as $zone) {
-				if ($zone->state == 'ACTIVE') {
-					$domains[] = trim($zone->zone);
-				}
-			}
-		}
-		return $domains;
+        $api_return = $this->_ovhapi->get('/'.$this->_type.'/'.$this->_host.'/secondaryDnsDomains');
+        if ($api_return['http_code'] == 200) {
+            return $api_return['response'];
+        } else {
+            return false;
+        }
 	}
 }
+
+class OvhApi {
+
+    var $AK;
+    var $AS;
+    var $CK;
+    var $timeDrift = 0;
+    function __construct($_root, $_ak, $_as, $_ck) {
+        // INIT vars
+        $this->AK = $_ak;
+        $this->AS = $_as;
+        $this->CK = $_ck;
+        $this->ROOT = $_root;
+
+        // Compute time drift
+        $serverTimeRequest = file_get_contents($this->ROOT . '/auth/time');
+        if($serverTimeRequest !== FALSE)
+        {
+            $this->timeDrift = time() - (int)$serverTimeRequest;
+        }
+    }
+    function call($method, $url, $body = NULL)
+    {
+        $url = $this->ROOT . $url;
+        if($body)
+        {
+            $body = json_encode($body);
+        }
+        else
+        {
+            $body = "";
+        }
+
+        // Compute signature
+        $time = time() - $this->timeDrift;
+        $toSign = $this->AS.'+'.$this->CK.'+'.$method.'+'.$url.'+'.$body.'+'.$time;
+        $signature = '$1$' . sha1($toSign);
+
+        // Call
+        $curl = curl_init($url);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $method);
+        if ($this->CK) {
+            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
+                'Content-Type:application/json',
+                'X-Ovh-Application:' . $this->AK,
+                'X-Ovh-Consumer:' . $this->CK,
+                'X-Ovh-Signature:' . $signature,
+                'X-Ovh-Timestamp:' . $time,
+            ));
+        } else {
+            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
+                'Content-Type:application/json',
+                'X-Ovh-Application:' . $this->AK
+            ));
+        }
+    
+        
+        if($body) {
+            curl_setopt($curl, CURLOPT_POSTFIELDS, $body);
+        }
+        $result = curl_exec($curl);
+        $info = curl_getinfo($curl);
+        
+        if($result === FALSE) {
+            return NULL;
+        }
+
+        return array('http_code' => $info['http_code'], 'response' => json_decode($result));
+    }
+    function get($url)
+    {
+        return $this->call("GET", $url);
+    }
+    function put($url, $body)
+    {
+        return $this->call("PUT", $url, $body);
+    }
+    function post($url, $body)
+    {
+        return $this->call("POST", $url, $body);
+    }
+    function delete($url)
+    {
+        return $this->call("DELETE", $url);
+    }
+}
+

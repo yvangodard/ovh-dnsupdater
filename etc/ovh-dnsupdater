@@ -1,18 +1,18 @@
-[soapi]
-; NIC-Handle (username)
-nic      = XXXX-OVH
-password = SoapiPassword
-url      = https://www.ovh.com/soapi/soapi-re-1.7.wsdl
+[api]
+url             = https://eu.api.ovh.com/1.0
+;Create your OVH app on : https://eu.api.ovh.com/createApp/ and put acces_key & acces_secret
+acces_key       = XXXXXXXX
+acces_secret    = XXXXXXXXXXXX
+;use option --consumer-key to get and valid your consumer key
+consumer_key    = 
 
 [server]
 ; You must use the ovh-recognized hostname (ie, the original name of the 
 ; server when ovh gave it to you)
+;type: vps or dedicated
+type     = vps
 hostname = nsXXXX.ovh.net
 ip       = xxx.xxx.xxx.xxx
-
-[backup_dns]
-hostname = sdns2.ovh.net
-ip       = 213.251.188.141
 
 [paths]
 zones       = /var/cache/bind
