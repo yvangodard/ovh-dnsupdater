@@ -26,7 +26,14 @@ First of all, you should copy the required files into appropriate locations in y
 
 ### Setup the utility ###
 
-The next step is to modify the configuration file to reflect your OVH's SOAPI credentials, and the details of your server. All these settings are found in the /etc/ovh-dnsupdater (or wherever you have put the configuration) file.
+The next step is to modify the configuration file to reflect your OVH's API credentials, and the details of your server. All these settings are found in the `/etc/ovh-dnsupdater` (or wherever you have put the configuration) file.
+
+Go to https://api.ovh.com/createApp/ and create an application. Then, enter these settings in the `/etc/ovh-dnsupdater` setting's file. 
+Please dont fill the line `consumer_key    =`
+
+To get a consumer_key, please run the script with option `--consumer-key`.
+The script will print you an URL. You have to open (copy/paste) this URL in your favorite browser to valitade your consumer_key.
+Then, report this consumer_key in in the `/etc/ovh-dnsupdater` setting's file.
 
 ### First run and cronjob setup ###
 
@@ -63,6 +70,8 @@ Alternatively, some systems allow you to define cronjob tasks by creating files 
 		Show this help message.
 	  --hard       
 		Force downloading the list of already setup domains using the API.
+		--consumer-key      
+		Generate a consumer_key.
 
 ## How it works ##
 

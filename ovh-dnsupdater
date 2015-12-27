@@ -1,5 +1,33 @@
 #!/usr/bin/php
 <?php
+/* 
+ovh-dnsupdater
+Version 2.0
+
+Original script by Marc PUJOL - http://www.mendeley.com/profiles/marc-pujol-gonzalez
+Modded by Yvan GODARD - godardyvan@gmail.com - http://www.yvangodard.me
+Modded to work with OVH new API (https://api.ovh.com/) by Romain MONTAGNE - http://www.supvize.com
+
+Ovh-dnsupdater is a small utility to automate the addition and removal of domains 
+to the (free) secondary DNS server offered by OVH.
+
+Readme : https://github.com/yvangodard/ovh-dnsupdater
+
+THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS "AS IS" AND ANY
+EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE REGENTS AND CONTRIBUTORS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+This program is distributed under the terms of Creative Commons BY NC SA 4.0 :
+http://creativecommons.org/licenses/by-nc-sa/4.0
+
+*/
 
 // Parse user-specified options
 $programName = array_shift($argv);
@@ -37,7 +65,7 @@ Options:
   --hard       
 	Force downloading the list of already setup domains using the API.
   --consumer-key      
-	Force downloading the list of already setup domains using the API.
+	Generate a consumer_key.
 
 EOD;
 	exit(0);
@@ -65,7 +93,7 @@ if ($options['consumer-key']) {
 }
 
 if (empty($conf['api']['consumer_key'])) {
-    exit("Before use this program you must obtain a consumer key, use --consumer-key \n");
+    exit("Before use this program you must obtain a consumer_key, use --consumer-key \n");
 }
 
 if ($options['dry-run']) {
@@ -112,7 +140,7 @@ foreach($removed as $domain) {
 		if (!$options['dry-run']) {
 			$updater->removeDomain($domain);
 		}
-		syslog(LOG_NOTICE, 'Removed domain ' . $domain . ' from the secondary DNS server');
+		syslog(LOG_NOTICE, 'Domain ' . $domain . ' removed from the secondary DNS server');
 	} catch(Exception $e) {
 		syslog(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server: ' . $e->getMessage());
 	}
@@ -124,9 +152,9 @@ foreach($added as $domain) {
 		if (!$options['dry-run']) {
 			$updater->addDomain($domain);
 		}
-		syslog(LOG_NOTICE, 'Added domain ' . $domain . ' from the secondary DNS server');
+		syslog(LOG_NOTICE, 'Domain ' . $domain . ' added to the secondary DNS server');
 	} catch(Exception $e) {
-		syslog(LOG_NOTICE, 'Failed to add domain ' . $domain . ' from the secondary DNS server: ' . $e->getMessage());
+		syslog(LOG_NOTICE, 'Failed to add domain ' . $domain . ' to the secondary DNS server: ' . $e->getMessage());
 	}
 
 }
